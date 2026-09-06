@@ -332,6 +332,41 @@ export interface ChalkInstance {
 	readonly underlineMagentaBright: this;
 	readonly underlineCyanBright: this;
 	readonly underlineWhiteBright: this;
+
+	/**
+	Apply a registered theme by name.
+
+	The theme behaves like any other style: it can be chained with and nested inside other styles.
+
+	@throws If no theme is registered under the given name.
+
+	@example
+	```
+	import chalk from 'chalk';
+
+	chalk.registerTheme('error', theme => theme.bold.red);
+	console.log(chalk.theme('error')('Error!'));
+	```
+	*/
+	theme: (name: string) => this;
+
+	/**
+	Register a theme: a named set of styles that can later be applied with `.theme(name)`.
+
+	The callback receives a Chalk builder and must return a style chain. It must be pure, because Chalk may call it more than once to resolve colors against the current color support level.
+
+	@param name - Name to register the theme under. Re-registering a name replaces the previous theme.
+	@param buildTheme - Function that receives a Chalk builder and returns a style chain.
+
+	@example
+	```
+	import chalk from 'chalk';
+
+	chalk.registerTheme('warning', theme => theme.bold.hex('#FFA500'));
+	console.log(chalk.theme('warning')('Warning!'));
+	```
+	*/
+	registerTheme: (name: string, buildTheme: (theme: ChalkInstance) => ChalkInstance) => void;
 }
 
 /**

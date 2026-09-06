@@ -11,6 +11,7 @@ const GENERATOR = Symbol('GENERATOR');
 const STYLER = Symbol('STYLER');
 const IS_EMPTY = Symbol('IS_EMPTY');
 const LEVEL = Symbol('LEVEL');
+const THEMES = Symbol('THEMES');
 
 const styles = Object.create(null);
 
@@ -52,6 +53,9 @@ export class Chalk {
 const chalkFactory = options => {
 	const chalk = (...strings) => strings.join(' ');
 	applyOptions(chalk, options);
+
+	// Each instance carries its own theme registry. The default `chalk` export's registry doubles as the shared one.
+	chalk[THEMES] = new Map();
 
 	Object.setPrototypeOf(chalk, createChalk.prototype);
 
@@ -133,6 +137,54 @@ for (const model of usedModels) {
 	}
 }
 
+styles.theme = {
+	get() {
+		const themeStyle = name => {
+			if (typeof name !== 'string' || name === '') {
+				throw new TypeError('The theme name must be a non-empty string');
+			}
+
+			const generator = this[GENERATOR] ?? this;
+			const buildTheme = generator[THEMES].get(name);
+
+			if (buildTheme === undefined) {
+				throw new Error(`Unknown Chalk theme: ${JSON.stringify(name)}`);
+			}
+
+			// Resolve the theme at call time so model styles (`rgb`/`hex`/`ansi256`) downsample against the level in effect right now, like direct styles do.
+			const theme = buildTheme(createBuilder(generator, undefined, false));
+			const styler = graftStyler(theme[STYLER], this[STYLER]);
+
+			return createBuilder(this, styler, this[IS_EMPTY] || theme[IS_EMPTY]);
+		};
+
+		Object.defineProperty(this, 'theme', {value: themeStyle});
+		return themeStyle;
+	},
+};
+
+styles.registerTheme = {
+	enumerable: false,
+	value(name, buildTheme) {
+		if (typeof name !== 'string' || name === '') {
+			throw new TypeError('The theme name must be a non-empty string');
+		}
+
+		if (typeof buildTheme !== 'function') {
+			throw new TypeError('The theme builder must be a function, e.g. `theme => theme.bold.red`');
+		}
+
+		const generator = this[GENERATOR] ?? this;
+
+		// Fail fast when the builder applies styles to text instead of returning a style chain.
+		if (typeof buildTheme(createBuilder(generator, undefined, false)) !== 'function') {
+			throw new TypeError('The theme builder must return a style chain, not styled text');
+		}
+
+		generator[THEMES].set(name, buildTheme);
+	},
+};
+
 const proto = Object.defineProperties(
 	() => {},
 	{
@@ -167,6 +219,19 @@ const createStyler = (open, close, parent) => {
 		closeAll,
 		parent,
 	};
+};
+
+// Re-link a theme's styler chain onto the outer chain so `openAll`/`closeAll` recompute, e.g. `chalk.red.theme('bold-theme')` produces exactly `chalk.red.bold`. Stylers are immutable once created, so they can be shared as-is.
+const graftStyler = (styler, parent) => {
+	if (styler === undefined) {
+		return parent;
+	}
+
+	if (parent === undefined) {
+		return styler;
+	}
+
+	return createStyler(styler.open, styler.close, graftStyler(styler.parent, parent));
 };
 
 const createBuilder = (self, _styler, _isEmpty) => {
