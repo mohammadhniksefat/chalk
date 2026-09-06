@@ -26,6 +26,7 @@
 - Highly performant
 - No dependencies
 - Ability to nest styles
+- [Named themes](#themes)
 - [256/Truecolor color support](#256-and-truecolor-color-support)
 - Auto-detects color support
 - Doesn't extend `String.prototype`
@@ -87,16 +88,16 @@ log(chalk.rgb(123, 45, 67).underline('Underlined reddish color'));
 log(chalk.hex('#DEADED').bold('Bold gray!'));
 ```
 
-Easily define your own themes:
+Define reusable themes with [`chalk.registerTheme()`](#themes):
 
 ```js
 import chalk from 'chalk';
 
-const error = chalk.bold.red;
-const warning = chalk.hex('#FFA500'); // Orange color
+chalk.registerTheme('error', theme => theme.bold.red);
+chalk.registerTheme('warning', theme => theme.bold.hex('#FFA500')); // Orange color
 
-console.log(error('Error!'));
-console.log(warning('Warning!'));
+console.log(chalk.theme('error')('Error!'));
+console.log(chalk.theme('warning')('Warning!'));
 ```
 
 Take advantage of console.log [string substitution](https://nodejs.org/docs/latest/api/console.html#console_console_log_data_args):
@@ -141,6 +142,45 @@ const customChalk = new Chalk({level: 0});
 | `3` | Truecolor support (16 million colors) |
 
 Both the `level` option and the `level` property throw for anything that is not an integer from 0 to 3. Omit the option, or pass `undefined`, to have the level detected instead.
+
+### Themes
+
+Register a named set of styles and apply it later by name. A theme can use every Chalk style, including truecolor models like `hex` and `rgb`.
+
+```js
+import chalk from 'chalk';
+
+chalk.registerTheme('error', theme => theme.bold.red.bgHex('#300'));
+chalk.registerTheme('warning', theme => theme.bold.hex('#FFA500'));
+
+console.log(chalk.theme('error')('Error!'));
+console.log(chalk.theme('warning')('Warning!'));
+```
+
+#### chalk.registerTheme(name, buildTheme)
+
+- `name` must be a non-empty string. Re-registering a name replaces the previous theme.
+- `buildTheme` is a function that receives a Chalk builder and must return a style chain, for example `theme => theme.bold.red`. It must be pure: Chalk may call it more than once, so that colors are resolved against the color support level in effect at use time. It is also called once at registration to catch mistakes like returning styled text instead of a style chain.
+
+Themes are registered per Chalk instance. Registering on the default `chalk` export makes the theme available everywhere that import is shared, while `chalkStderr` and instances from `new Chalk()` keep their own registries.
+
+#### chalk.theme(name)
+
+Apply a registered theme by name. Themes behave like any other style: they can be chained with and nested inside other styles, in any order.
+
+```js
+import chalk from 'chalk';
+
+chalk.registerTheme('warning', theme => theme.bold.hex('#FFA500'));
+
+console.log(chalk.theme('warning').underline('Warning!'));
+console.log(chalk.underline.theme('warning')('Warning!'));
+console.log(chalk.theme('warning')(chalk.theme('error')('nested')));
+```
+
+Throws if no theme is registered under `name`.
+
+Like `chalk.rgb()` and friends, a hoisted chain such as `const warning = chalk.theme('warning')` resolves its colors once, when the chain is created. Prefer calling `chalk.theme('warning')` at the point of use so model styles keep following the color level.
 
 ### supportsColor
 
